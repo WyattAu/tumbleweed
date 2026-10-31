@@ -1,0 +1,27 @@
+name: quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  cpp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile dev form (vendored header)
+        run: g++ -std=c++23 -O2 -Wall -Wextra -Wpedantic -o /tmp/tw tumbleweed.cpp
+      - name: Amalgamate submission artifact
+        run: ./scripts/amalgamate.sh
+      - name: Compile submission artifact (standalone single TU)
+        run: g++ -std=c++23 -O2 -Wall -Wextra -Wpedantic -o /tmp/tw-sub submission/tumbleweed.cpp
+      - name: Protocol smoke — dev binary
+        run: "[ \"$(printf 'B2\\nI8\\nStart\\nH7\\nB4\\nQuit\\n' | /tmp/tw | wc -l)\" -eq 3 ]"
+      - name: Protocol smoke — submission artifact
+        run: "[ \"$(printf 'B2\\nI8\\nStart\\nH7\\nB4\\nQuit\\n' | /tmp/tw-sub | wc -l)\" -eq 3 ]"
+      - name: Upload submission artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: codecup-submission
+          path: submission/tumbleweed.cpp
