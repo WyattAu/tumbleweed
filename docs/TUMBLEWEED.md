@@ -35,10 +35,11 @@ Cells are `A`-`K` (columns, NE→SW) × `1`-`11` (rows, W→E). Cell exists iff 
 
 | v | What | State |
 |---|------|-------|
-| v0 | Greedy material: value + capture bonuses | ✅ skeleton |
-| v1 | Prefer max `seen(me) − seen(opp)`; penalize recapturable placements | TODO |
-| v2 | **Judge-style territory simulation** (fill-for-white → fill-for-red) as eval — this *is* the score function | TODO |
+| v0 | Greedy material: value + capture bonuses | ✅ kept as low-time fallback + tiebreak |
+| v1 | Prefer max `seen(me) − seen(opp)`; penalize recapturable placements | ✅ absorbed into v2 |
+| v2 | **Judge-style territory simulation** as eval — the actual score function | ✅ **default** — 10W-5L-1D vs material, avg margin +6.2 (16 self-play games) |
 | v3 | Alpha-beta / MCTS over territory eval with 30s budget split | TODO |
+| v2.1 | Verify fill-order sensitivity (our row-major scan vs judge's unknown order) against Caia | TODO |
 | v4 | Caia self-play opening book (initial positions repeat within a round) | TODO |
 
 ## Strategy notes from the field

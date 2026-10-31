@@ -20,6 +20,10 @@ jobs:
         run: "[ \"$(printf 'B2\\nI8\\nStart\\nH7\\nB4\\nQuit\\n' | /tmp/tw | wc -l)\" -eq 3 ]"
       - name: Protocol smoke — submission artifact
         run: "[ \"$(printf 'B2\\nI8\\nStart\\nH7\\nB4\\nQuit\\n' | /tmp/tw-sub | wc -l)\" -eq 3 ]"
+      - name: Self-play regression (both colors, no illegal moves)
+        run: |
+          python3 scripts/match.py --red /tmp/tw --white /tmp/tw-sub --pairs 1 | tee /tmp/match.log
+          ! grep -qE 'illegal move|unparseable|timeout|quit/eof' /tmp/match.log
       - name: Upload submission artifact
         uses: actions/upload-artifact@v4
         with:

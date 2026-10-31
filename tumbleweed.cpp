@@ -20,9 +20,9 @@
 // Submission: CodeCup requires ONE source file — `scripts/amalgamate.sh`
 // inlines the pinned vendor/botkit.hpp into submission/tumbleweed.cpp.
 //
-// Engine ladder (docs/ENGINE.md):
-//   v0 greedy material (this file) -> v1 sightline-difference eval ->
-//   v2 judge-style territory simulation -> v3 alpha-beta on territory ->
+// Engine ladder:
+//   v0 greedy material -> v2 territory eval = judge's own fill simulation
+//   (v1 sightline-diff absorbed into it) -> v3 alpha-beta on territory ->
 //   v4 Caia self-play opening book.
 
 #include "vendor/botkit.hpp"
@@ -87,8 +87,7 @@ struct Engine {
     Board board;
     Color me = Red;
     Color opp = White;
-    bk::Timer clock;  // 30s TOTAL per game — v0 spends microseconds; the
-                      // search ladder may budget seconds per move from here.
+    bk::Timer clock;  // 30s TOTAL per game — territory eval is budgeted against this.
 
     struct Move {
         int c = 0, r = 0;
@@ -108,20 +107,75 @@ struct Engine {
                 } else if (board.cell[c][r].color == Neutral) {
                     m.score += 2LL * board.cell[c][r].value;        // claiming the big neutral
                 }
-                // TODO(v1): prefer placements where (seen(me) - seen(opp)) is
-                // maximal, and penalize leaving cheap recaptures nearby.
-                // TODO(v2): replicate the judge's territory simulation for the
-                // true score. TODO(v3): alpha-beta on territory eval.
                 moves.push_back(m);
             }
         }
         return moves;
     }
 
+    // -- v2: judge-style territory simulation --------------------------------
+    // The judge computes territory by filling: opponent places to exhaustion
+    // (row-major scan; placement order is our best approximation of the
+    // judge's), then `target` places to exhaustion, capturing dead stacks.
+    // Cells holding `target` stacks afterwards are its territory — this is
+    // literally the score function, so eval on it directly.
+    static void fill(Board& b, Color color) {
+        for (;;) {
+            bool placed = false;
+            for (int c = 1; c <= kLabels && !placed; ++c) {
+                for (int r = 1; r <= kLabels && !placed; ++r) {
+                    if (b.legal(color, c, r)) {
+                        b.apply(color, c, r);
+                        placed = true;
+                    }
+                }
+            }
+            if (!placed) return;
+        }
+    }
+
+    [[nodiscard]] static long long territory(const Board& start, Color target) {
+        Board b = start;
+        fill(b, target == Red ? White : Red);
+        fill(b, target);
+        long long t = 0;
+        for (int c = 1; c <= kLabels; ++c)
+            for (int r = 1; r <= kLabels; ++r)
+                if (b.cell[c][r].color == target) ++t;
+        return t;
+    }
+
+    /// Material score for a move (v0 heuristic — low-time fallback + tiebreak).
+    [[nodiscard]] long long material_score(const Move& m) const {
+        long long s = board.seen(me, m.c, m.r);
+        if (board.cell[m.c][m.r].color == opp) s += 3LL * board.cell[m.c][m.r].value;
+        if (board.cell[m.c][m.r].color == Neutral) s += 2LL * board.cell[m.c][m.r].value;
+        return s;
+    }
+
+    /// v2 eval: territory differential after this move under the judge's own
+    /// fill procedure, with material as tiebreak. Falls back to pure material
+    /// when the game clock is nearly gone (keep >= 8s margin at 30s total).
     [[nodiscard]] Move best() const {
+        const bool low_time = clock.over(22'000);
         Move best;
+        bool any = false;
         for (const Move& m : legal_moves()) {
-            if (m.score > best.score) best = m;
+            long long s = m.score;
+            if (!low_time) {
+                Board after = board;
+                after.apply(me, m.c, m.r);
+                const long long mine = territory(after, me);
+                const long long theirs = territory(after, opp);
+                s += 1000LL * (mine - theirs);
+            }
+            // First candidate always seeds best — territory differentials go
+            // deeply negative when behind, and a -1 sentinel would never be
+            // beaten (the @0 self-destruct bug).
+            if (!any || s > best.score) {
+                best = {m.c, m.r, s};
+                any = true;
+            }
         }
         return best;  // judge guarantees a legal move exists on your turn
     }
@@ -161,6 +215,8 @@ int main() {
         play();
     } else {
         // We are white; `third` is red's first move.
+        engine.me = White;
+        engine.opp = Red;
         int c = 0, r = 0;
         if (!Grid::parse(third, c, r)) return 0;
         engine.board.apply(Red, c, r);
