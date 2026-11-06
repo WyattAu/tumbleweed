@@ -12,6 +12,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Compile dev form (vendored header)
         run: g++ -std=c++23 -O2 -Wall -Wextra -Wpedantic -o /tmp/tw tumbleweed.cpp
+      - name: Conformance bridge (tests/conformance.cpp — game-spec Lean model mirror)
+        run: |
+          g++ -std=c++23 -O2 -Wall -Wextra -Wpedantic -o /tmp/tw-conf tests/conformance.cpp
+          /tmp/tw-conf
       - name: Amalgamate submission artifact
         run: ./scripts/amalgamate.sh
       - name: Compile submission artifact (standalone single TU)
